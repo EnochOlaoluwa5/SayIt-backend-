@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SayIt — Voice Studio</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f7fb;
+  color: #172033;
+}
+
+.header {
+  background: #111827;
+  color: white;
+  padding: 22px 18px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.header p {
+  margin: 6px 0 0;
+  color: #cbd5e1;
+}
+
+.container {
+  max-width: 700px;
+  margin: auto;
+  padding: 18px;
+}
+
+.card {
+  background: white;
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.06);
+}
+
+label {
+  display: block;
+  font-weight: bold;
+  margin: 14px 0 7px;
+}
+
+textarea,
+select {
+  width: 100%;
+  padding: 13px;
+  border: 1px solid #d7dce5;
+  border-radius: 12px;
+  font-size: 16px;
+  background: white;
+}
+
+textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+button {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 14px;
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.primary {
+  background: #111827;
+  color: white;
+}
+
+.secondary {
+  background: #e8edf5;
+  color: #111827;
+}
+
+button:disabled {
+  opacity: .55;
+}
+
+.status {
+  padding: 12px;
+  border-radius: 10px;
+  background: #eef2ff;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.voiceInfo {
+  background: #f8fafc;
+  padding: 13px;
+  border-radius: 12px;
+  margin-top: 12px;
+}
+
+.voiceName {
+  font-weight: bold;
+  font-size: 17px;
+}
+
+.small {
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 5px;
+}
+
+audio {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.badge {
+  display: inline-block;
+  background: #e2e8f0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin: 3px 3px 0 0;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <h1>SayIt</h1>
+  <p>Speak. Create. Connect.</p>
+</div>
+
+<div class="container">
+
+  <div class="card">
+
+    <label for="textInput">What do you want to say?</label>
+
+    <textarea
+      id="textInput"
+      placeholder="Type your message here..."
+    >Hello, how are you?</textarea>
+
+    <label for="languageSelect">Language</label>
+
+    <select id="languageSelect">
+      <option value="">Loading languages...</option>
+    </select>
+
+    <label for="accentSelect">Accent / Region</label>
+
+    <select id="accentSelect">
+      <option value="">All accents</option>
+    </select>
+
+    <label for="genderSelect">Voice gender</label>
+
+    <select id="genderSelect">
+      <option value="">All voices</option>
+      <option value="male">Male</option>
+      <option value="female">Female</option>
+    </select>
+
+    <label for="voiceSelect">Voice</label>
+
+    <select id="voiceSelect">
+      <option value="">Loading voices...</option>
+    </select>
+
+    <div id="voiceInfo" class="voiceInfo">
+      <div class="voiceName">No voice selected</div>
+      <div class="small">
+        Choose a language and voice.
+      </div>
+    </div>
+
+    <button
+      id="previewButton"
+      class="secondary"
+      disabled
+    >
+      ▶ Preview Voice
+    </button>
+
+    <button
+      id="speakButton"
+      class="primary"
+      disabled
+    >
+      🔊 Generate Speech
+    </button>
+
+    <div id="status" class="status">
+      Connecting to SayIt...
+    </div>
+
+    <audio
+      id="audioPlayer"
+      controls
+      style="display:none;"
+    ></audio>
+
+    <button
+      id="stopButton"
+      class="secondary"
+      style="display:none;"
+    >
+      ⏹ Stop
+    </button>
+
+    <button
+      id="copyButton"
+      class="secondary"
+    >
+      📋 Copy Text
+    </button>
+
+  </div>
+
+</div>
+
+<script>
+
+const API_BASE =
+  "https://sayit-backend-zd7j.onrender.com";
+
+let allVoices = [];
+let currentAudio = null;
+
+const textInput =
+  document.getElementById("textInput");
+
+const languageSelect =
+  document.getElementById("languageSelect");
+
+const accentSelect =
+  document.getElementById("accentSelect");
+
+const genderSelect =
+  document.getElementById("genderSelect");
+
+const voiceSelect =
+  document.getElementById("voiceSelect");
+
+const previewButton =
+  document.getElementById("previewButton");
+
+const speakButton =
+  document.getElementById("speakButton");
+
+const stopButton =
+  document.getElementById("stopButton");
+
+const copyButton =
+  document.getElementById("copyButton");
+
+const status =
+  document.getElementById("status");
+
+const voiceInfo =
+  document.getElementById("voiceInfo");
+
+const audioPlayer =
+  document.getElementById("audioPlayer");
+
+
+function setStatus(message) {
+  status.textContent = message;
+}
+
+
+function getLanguageName(languageObject) {
+
+  if (!languageObject) {
+    return "";
+  }
+
+  return (
+    languageObject.language ||
+    languageObject.name ||
+    ""
+  );
+}
+
+
+function getVoiceLanguages(voice) {
+
+  if (!voice.languages) {
+    return [];
+  }
+
+  return voice.languages
+    .map(function(language) {
+      return language.language || "";
+    })
+    .filter(Boolean);
+}
+
+
+function getVoiceAccents(voice) {
+
+  const accents = [];
+
+  if (voice.accent) {
+    accents.push(
+      voice.accent.toLowerCase()
+    );
+  }
+
+  if (voice.languages) {
+
+    voice.languages.forEach(function(language) {
+
+      if (language.accent) {
+        accents.push(
+          language.accent.toLowerCase()
+        );
+      }
+
+      if (language.locale) {
+        accents.push(
+          language.locale.toLowerCase()
+        );
+      }
+
+    });
+
+  }
+
+  return [...new Set(accents)];
+}
+
+
+function voiceSupportsLanguage(voice, language) {
+
+  if (!language) {
+    return true;
+  }
+
+  const languages =
+    getVoiceLanguages(voice);
+
+  return languages.includes(language);
+}
+
+
+function voiceSupportsAccent(voice, accent) {
+
+  if (!accent) {
+    return true;
+  }
+
+  const accents =
+    getVoiceAccents(voice);
+
+  return accents.includes(
+    accent.toLowerCase()
+  );
+}
+
+
+function voiceSupportsGender(voice, gender) {
+
+  if (!gender) {
+    return true;
+  }
+
+  return (
+    (voice.gender || "").toLowerCase()
+    === gender.toLowerCase()
+  );
+}
+
+
+function getSelectedVoice() {
+
+  const id = voiceSelect.value;
+
+  return allVoices.find(function(voice) {
+    return voice.id === id;
+  });
+}
+
+
+function updateVoiceInfo() {
+
+  const voice =
+    getSelectedVoice();
+
+  if (!voice) {
+
+    voiceInfo.innerHTML = `
+      <div class="voiceName">
+        No voice selected
+      </div>
+      <div class="small">
+        Choose a voice.
+      </div>
+    `;
+
+    previewButton.disabled = true;
+    speakButton.disabled = true;
+
+    return;
+  }
+
+  let html = `
+    <div class="voiceName">
+      ${escapeHtml(voice.name)}
+    </div>
+  `;
+
+  if (voice.gender) {
+    html += `
+      <span class="badge">
+        ${escapeHtml(voice.gender)}
+      </span>
+    `;
+  }
+
+  if (voice.accent) {
+    html += `
+      <span class="badge">
+        ${escapeHtml(voice.accent)}
+      </span>
+    `;
+  }
+
+  if (voice.age) {
+    html += `
+      <span class="badge">
+        ${escapeHtml(voice.age)}
+      </span>
+    `;
+  }
+
+  if (voice.description) {
+    html += `
+      <div class="small">
+        ${escapeHtml(voice.description)}
+      </div>
+    `;
+  }
+
+  voiceInfo.innerHTML = html;
+
+  previewButton.disabled =
+    !voice.previewUrl;
+
+  speakButton.disabled = false;
+}
+
+
+function escapeHtml(value) {
+
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+
+function populateLanguages() {
+
+  const languages = new Set();
+
+  allVoices.forEach(function(voice) {
+
+    getVoiceLanguages(voice)
+      .forEach(function(language) {
+        languages.add(language);
+      });
+
+  });
+
+  const sorted =
+    [...languages].sort();
+
+  languageSelect.innerHTML =
+    `<option value="">All available languages</option>`;
+
+  sorted.forEach(function(language) {
+
+    const option =
+      document.createElement("option");
+
+    option.value = language;
+    option.textContent =
+      language.toUpperCase();
+
+    languageSelect.appendChild(option);
+
+  });
+
+}
+
+
+function populateAccents() {
+
+  const selectedLanguage =
+    languageSelect.value;
+
+  const accents = new Set();
+
+  allVoices
+    .filter(function(voice) {
+      return voiceSupportsLanguage(
+        voice,
+        selectedLanguage
+      );
+    })
+    .forEach(function(voice) {
+
+      getVoiceAccents(voice)
+        .forEach(function(accent) {
+
+          if (accent.length > 1) {
+            accents.add(accent);
+          }
+
+        });
+
+    });
+
+  const sorted =
+    [...accents].sort();
+
+  accentSelect.innerHTML =
+    `<option value="">All accents</option>`;
+
+  sorted.forEach(function(accent) {
+
+    const option =
+      document.createElement("option");
+
+    option.value = accent;
+    option.textContent =
+      accent.toUpperCase();
+
+    accentSelect.appendChild(option);
+
+  });
+
+}
+
+
+function populateVoices() {
+
+  const language =
+    languageSelect.value;
+
+  const accent =
+    accentSelect.value;
+
+  const gender =
+    genderSelect.value;
+
+  const filtered =
+    allVoices.filter(function(voice) {
+
+      return (
+        voiceSupportsLanguage(
+          voice,
+          language
+        ) &&
+        voiceSupportsAccent(
+          voice,
+          accent
+        ) &&
+        voiceSupportsGender(
+          voice,
+          gender
+        )
+      );
+
+    });
+
+  voiceSelect.innerHTML = "";
+
+  if (!filtered.length) {
+
+    voiceSelect.innerHTML =
+      `<option value="">
+        No matching voices
+      </option>`;
+
+    updateVoiceInfo();
+    return;
+  }
+
+  filtered.forEach(function(voice) {
+
+    const option =
+      document.createElement("option");
+
+    option.value =
+      voice.id;
+
+    let label =
+      voice.name;
+
+    if (voice.gender) {
+      label +=
+        " — " +
+        voice.gender;
+    }
+
+    if (voice.accent) {
+      label +=
+        " — " +
+        voice.accent;
+    }
+
+    option.textContent =
+      label;
+
+    voiceSelect.appendChild(option);
+
+  });
+
+  updateVoiceInfo();
+}
+
+
+async function loadVoices() {
+
+  try {
+
+    setStatus(
+      "Connecting to SayIt voice system..."
+    );
+
+    const response =
+      await fetch(
+        API_BASE + "/api/voices"
+      );
+
+    const data =
+      await response.json();
+
+    if (!response.ok ||
+        !data.success) {
+
+      throw new Error(
+        data.error ||
+        "Could not load voices."
+      );
+
+    }
+
+    allVoices =
+      data.voices || [];
+
+    if (!allVoices.length) {
+      throw new Error(
+        "No voices were returned."
+      );
+    }
+
+    populateLanguages();
+    populateAccents();
+    populateVoices();
+
+    setStatus(
+      allVoices.length +
+      " real ElevenLabs voices loaded."
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    setStatus(
+      "Could not load voices: " +
+      error.message
+    );
+
+  }
+
+}
+
+
+async function generateSpeech() {
+
+  const text =
+    textInput.value.trim();
+
+  const voice =
+    getSelectedVoice();
+
+  if (!text) {
+
+    setStatus(
+      "Please enter some text first."
+    );
+
+    return;
+  }
+
+  if (!voice) {
+
+    setStatus(
+      "Please choose a voice."
+    );
+
+    return;
+  }
+
+  speakButton.disabled = true;
+
+  previewButton.disabled = true;
+
+  setStatus(
+    "Generating your speech..."
+  );
+
+  try {
+
+    const response =
+      await fetch(
+        API_BASE + "/api/speak",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            text: text,
+            voice: voice.id,
+            language:
+              languageSelect.value,
+            style: "Natural"
+          })
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (!response.ok ||
+        !data.success) {
+
+      throw new Error(
+        data.error ||
+        "Speech generation failed."
+      );
+
+    }
+
+    const binary =
+      atob(data.audioBase64);
+
+    const bytes =
+      new Uint8Array(
+        binary.length
+      );
+
+    for (
+      let i = 0;
+      i < binary.length;
+      i++
+    ) {
+      bytes[i] =
+        binary.charCodeAt(i);
+    }
+
+    const blob =
+      new Blob(
+        [bytes],
+        {
+          type:
+            data.audioMimeType ||
+            "audio/mpeg"
+        }
+      );
+
+    const audioUrl =
+      URL.createObjectURL(blob);
+
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
+
+    audioPlayer.src =
+      audioUrl;
+
+    audioPlayer.style.display =
+      "block";
+
+    currentAudio =
+      audioPlayer;
+
+    stopButton.style.display =
+      "block";
+
+    await audioPlayer.play();
+
+    setStatus(
+      "Speech generated successfully."
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    setStatus(
+      "SayIt error: " +
+      error.message
+    );
+
+  } finally {
+
+    speakButton.disabled = false;
+
+    updateVoiceInfo();
+  }
+
+}
+
+
+function previewVoice() {
+
+  const voice =
+    getSelectedVoice();
+
+  if (!voice ||
+      !voice.previewUrl) {
+
+    setStatus(
+      "This voice does not have a preview."
+    );
+
+    return;
+  }
+
+  if (currentAudio) {
+    currentAudio.pause();
+  }
+
+  audioPlayer.src =
+    voice.previewUrl;
+
+  audioPlayer.style.display =
+    "block";
+
+  currentAudio =
+    audioPlayer;
+
+  audioPlayer.play()
+    .then(function() {
+
+      setStatus(
+        "Playing voice preview..."
+      );
+
+    })
+    .catch(function(error) {
+
+      setStatus(
+        "Could not play preview: " +
+        error.message
+      );
+
+    });
+
+}
+
+
+function stopAudio() {
+
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+  }
+
+  setStatus(
+    "Audio stopped."
+  );
+
+}
+
+
+async function copyText() {
+
+  const text =
+    textInput.value;
+
+  if (!text.trim()) {
+
+    setStatus(
+      "There is no text to copy."
+    );
+
+    return;
+  }
+
+  try {
+
+    await navigator.clipboard.writeText(
+      text
+    );
+
+    setStatus(
+      "Text copied."
+    );
+
+  } catch (error) {
+
+    setStatus(
+      "Could not copy the text."
+    );
+
+  }
+
+}
+
+
+languageSelect.addEventListener(
+  "change",
+  function() {
+
+    populateAccents();
+    populateVoices();
+
+  }
+);
+
+
+accentSelect.addEventListener(
+  "change",
+  function() {
+
+    populateVoices();
+
+  }
+);
+
+
+genderSelect.addEventListener(
+  "change",
+  function() {
+
+    populateVoices();
+
+  }
+);
+
+
+voiceSelect.addEventListener(
+  "change",
+  function() {
+
+    updateVoiceInfo();
+
+  }
+);
+
+
+previewButton.addEventListener(
+  "click",
+  previewVoice
+);
+
+
+speakButton.addEventListener(
+  "click",
+  generateSpeech
+);
+
+
+stopButton.addEventListener(
+  "click",
+  stopAudio
+);
+
+
+copyButton.addEventListener(
+  "click",
+  copyText
+);
+
+
+loadVoices();
+
+</script>
+
+</body>
+  </html>
