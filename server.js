@@ -1,26 +1,14 @@
 const express = require("express");
 const cors = require("cors");
-const OpenAI = require("openai");
 require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-const voices = [
-  { id: "american-male", name: "American Male", language: "en-US", gender: "male", modelVoice: "onyx" },
-  { id: "american-female", name: "American Female", language: "en-US", gender: "female", modelVoice: "nova" },
-  { id: "british-male", name: "British Male", language: "en-GB", gender: "male", modelVoice: "echo" },
-  { id: "british-female", name: "British Female", language: "en-GB", gender: "female", modelVoice: "shimmer" },
-  { id: "nigerian-male", name: "Nigerian Male", language: "en-NG", gender: "male", modelVoice: "onyx" },
-  { id: "nigerian-female", name: "Nigerian Female", language: "en-NG", gender: "female", modelVoice: "nova" }
-];
 
 app.get("/", (req, res) => {
   res.json({
@@ -34,27 +22,76 @@ app.get("/api/config", (req, res) => {
   res.json({
     success: true,
     app: "SayIt",
-    version: "2.0.0",
+    version: "3.0.0",
     voiceSystem: true,
     translationSystem: false,
     videoSystem: false,
-    replySystem: false
+    replySystem: false,
+    provider: "ElevenLabs"
   });
 });
 
-app.get("/api/voices", (req, res) => {
-  res.json({
-    success: true,
-    voices: voices
-  });
+app.get("/api/voices", async (req, res) => {
+  try {
+    if (!ELEVENLABS_API_KEY) {
+      return res.status(500).json({
+        success: false,
+        error: "ElevenLabs API key is not configured."
+      });
+    }
+
+    const response = await fetch(
+      "https://api.elevenlabs.io/v2/voices?page_size=100",
+      {
+        headers: {
+          "xi-api-key": ELEVENLABS_API_KEY
+        }
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        success: false,
+        error: data.detail || "Unable to load ElevenLabs voices."
+      });
+    }
+
+    const voices = (data.voices || []).map(function (voice) {
+      const labels = voice.labels || {};
+
+      return {
+        id: voice.voice_id,
+        name: voice.name,
+        accent: labels.accent || "",
+        gender: labels.gender || "",
+        age: labels.age || "",
+        description: voice.description || "",
+        previewUrl: voice.preview_url || "",
+        languages: voice.verified_languages || []
+      };
+    });
+
+    res.json({
+      success: true,
+      voices: voices
+    });
+
+  } catch (error) {
+    console.error("Voice list error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || "Unable to load voices."
+    });
+  }
 });
 
 app.post("/api/speak", async (req, res) => {
   try {
     const text = req.body.text;
     const voiceId = req.body.voice;
-    const language = req.body.language;
-    const style = req.body.style || "Natural";
 
     if (!text || !text.trim()) {
       return res.status(400).json({
@@ -70,48 +107,45 @@ app.post("/api/speak", async (req, res) => {
       });
     }
 
-    const selectedVoice = voices.find(function(item) {
-      return item.id === voiceId;
-    });
-
-    if (!selectedVoice) {
-      return res.status(400).json({
+    if (!ELEVENLABS_API_KEY) {
+      return res.status(500).json({
         success: false,
-        error: "The selected voice is not configured."
+        error: "ElevenLabs API key is not configured."
       });
     }
 
-    let instructions = "Speak naturally and clearly.";
+    const response = await fetch(
+      "https://api.elevenlabs.io/v1/text-to-speech/" +
+        encodeURIComponent(voiceId) +
+        "?output_format=mp3_44100_128",
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": ELEVENLABS_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          text: text,
+          model_id: "eleven_multilingual_v2"
+        })
+      }
+    );
 
-    if (style === "Friendly") {
-      instructions = "Speak in a warm, friendly and natural way.";
-    } else if (style === "Professional") {
-      instructions = "Speak clearly, confidently and professionally.";
-    } else if (style === "Calm") {
-      instructions = "Speak calmly, gently and clearly.";
-    } else if (style === "Excited") {
-      instructions = "Speak with natural energy and enthusiasm.";
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      return res.status(response.status).json({
+        success: false,
+        error: errorText || "ElevenLabs could not generate the speech."
+      });
     }
 
-    const response = await openai.audio.speech.create({
-      model: "gpt-4o-mini-tts",
-      voice: selectedVoice.modelVoice,
-      input: text,
-      instructions: instructions,
-      response_format: "mp3"
-    });
-
     const buffer = Buffer.from(await response.arrayBuffer());
-    const audioBase64 = buffer.toString("base64");
 
     res.json({
       success: true,
       message: "Speech generated successfully.",
-      voice: selectedVoice,
-      language: language || selectedVoice.language,
-      style: style,
-      text: text,
-      audioBase64: audioBase64,
+      audioBase64: buffer.toString("base64"),
       audioMimeType: "audio/mpeg"
     });
 
@@ -125,13 +159,13 @@ app.post("/api/speak", async (req, res) => {
   }
 });
 
-app.use(function(req, res) {
+app.use(function (req, res) {
   res.status(404).json({
     success: false,
     error: "SayIt endpoint not found."
   });
 });
 
-app.listen(PORT, function() {
+app.listen(PORT, function () {
   console.log("SayIt backend running on port " + PORT);
 });
