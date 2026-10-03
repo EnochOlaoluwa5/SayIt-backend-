@@ -22,7 +22,7 @@ app.get("/api/config", (req, res) => {
   res.json({
     success: true,
     app: "SayIt",
-    version: "3.0.0",
+    version: "3.1.0",
     voiceSystem: true,
     translationSystem: false,
     videoSystem: false,
@@ -88,12 +88,94 @@ app.get("/api/voices", async (req, res) => {
   }
 });
 
+
+/*
+  SAYIT NATURAL SPEECH PACING
+
+  Adds carefully controlled pauses around:
+  - commas
+  - semicolons
+  - colons
+  - sentence endings
+  - em dashes
+  - ellipses
+
+  It does NOT add pauses between ordinary words.
+*/
+
+function addNaturalPacing(text) {
+
+  let result = String(text || "").trim();
+
+  if (!result) {
+    return result;
+  }
+
+  // Remove any existing break tags from user input.
+  result = result.replace(
+    /<break\b[^>]*\/?>/gi,
+    ""
+  );
+
+  // Normalize excessive spaces.
+  result = result.replace(
+    /[ \t]+/g,
+    " "
+  );
+
+  // Short natural pause after commas.
+  result = result.replace(
+    /,\s+/g,
+    ', <break time="0.25s" /> '
+  );
+
+  // Slightly longer pause after semicolons.
+  result = result.replace(
+    /;\s+/g,
+    '; <break time="0.35s" /> '
+  );
+
+  // Natural pause after a colon.
+  result = result.replace(
+    /:\s+/g,
+    ': <break time="0.30s" /> '
+  );
+
+  // Em dash = change of thought / natural break.
+  result = result.replace(
+    /\s*[—–]\s*/g,
+    ' <break time="0.40s" /> '
+  );
+
+  // Three dots = thinking / hesitation pause.
+  result = result.replace(
+    /\.{3,}/g,
+    '... <break time="0.70s" /> '
+  );
+
+  // Normal sentence-ending punctuation.
+  result = result.replace(
+    /([.!?])\s+/g,
+    '$1 <break time="0.55s" /> '
+  );
+
+  // Clean up repeated spaces around breaks.
+  result = result.replace(
+    /\s{2,}/g,
+    " "
+  );
+
+  return result.trim();
+}
+
+
 app.post("/api/speak", async (req, res) => {
   try {
-    const text = req.body.text;
+
+    const originalText = req.body.text;
     const voiceId = req.body.voice;
 
-    if (!text || !text.trim()) {
+    if (!originalText || !originalText.trim()) {
       return res.status(400).json({
         success: false,
         error: "Text is required."
@@ -114,50 +196,77 @@ app.post("/api/speak", async (req, res) => {
       });
     }
 
+    /*
+      Keep the original text for the user,
+      but send naturally paced text to ElevenLabs.
+    */
+    const speechText =
+      addNaturalPacing(originalText);
+
+    console.log("SayIt original text:", originalText);
+    console.log("SayIt paced text:", speechText);
+
     const response = await fetch(
       "https://api.elevenlabs.io/v1/text-to-speech/" +
         encodeURIComponent(voiceId) +
         "?output_format=mp3_44100_128",
       {
         method: "POST",
+
         headers: {
           "xi-api-key": ELEVENLABS_API_KEY,
           "Content-Type": "application/json"
         },
+
         body: JSON.stringify({
-          text: text,
+          text: speechText,
           model_id: "eleven_multilingual_v2"
         })
       }
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
+
+      const errorText =
+        await response.text();
 
       return res.status(response.status).json({
         success: false,
-        error: errorText || "ElevenLabs could not generate the speech."
+        error:
+          errorText ||
+          "ElevenLabs could not generate the speech."
       });
     }
 
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const buffer =
+      Buffer.from(
+        await response.arrayBuffer()
+      );
 
     res.json({
       success: true,
       message: "Speech generated successfully.",
-      audioBase64: buffer.toString("base64"),
+      audioBase64:
+        buffer.toString("base64"),
       audioMimeType: "audio/mpeg"
     });
 
   } catch (error) {
-    console.error("SayIt TTS error:", error);
+
+    console.error(
+      "SayIt TTS error:",
+      error
+    );
 
     res.status(500).json({
       success: false,
-      error: error.message || "Unable to generate speech."
+      error:
+        error.message ||
+        "Unable to generate speech."
     });
   }
 });
+
 
 app.use(function (req, res) {
   res.status(404).json({
@@ -166,6 +275,10 @@ app.use(function (req, res) {
   });
 });
 
+
 app.listen(PORT, function () {
-  console.log("SayIt backend running on port " + PORT);
+  console.log(
+    "SayIt backend running on port " +
+    PORT
+  );
 });
