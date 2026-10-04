@@ -209,12 +209,11 @@ app.post("/api/speak", async (req, res) => {
       We keep a small list of voices that have already been
       confirmed to work with this SayIt account.
     */
-
-    const fallbackVoices = [
-      "Nat6qYufULflyrQSpS8W",
-      "wevlkhfRsG0ND2D2pQHq",
-      "6F5Zhi321D3Oq7v1oNT4"
-    ];
+const fallbackVoices = [
+  "hpp4J3VqNfWAUOO0d1Us"
+];
+    
+    
 
     /*
       Try the user's selected voice first.
